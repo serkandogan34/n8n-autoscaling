@@ -6,7 +6,6 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     curl \
     jq \
-    docker.io \
     && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
@@ -14,10 +13,14 @@ RUN apt-get update && \
 # Set the working directory in the container
 WORKDIR /app
 
-# Install Docker Compose v2
-RUN mkdir -p ~/.docker/cli-plugins/ && \
+# Install Docker CLI and Docker Compose v2
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends docker.io && \
+    mkdir -p ~/.docker/cli-plugins/ && \
     curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 -o ~/.docker/cli-plugins/docker-compose && \
-    chmod +x ~/.docker/cli-plugins/docker-compose
+    chmod +x ~/.docker/cli-plugins/docker-compose && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first to leverage Docker cache
 COPY autoscaler/requirements.txt .
@@ -28,6 +31,8 @@ FROM python:3.9-slim
 WORKDIR /app
 
 # Copy from builder
+# We'll use a more robust copy approach to find the docker binary
+RUN DOCKER_BINARY_PATH=$(which docker) && cp "$DOCKER_BINARY_PATH" /usr/bin/docker
 COPY --from=builder /usr/bin/docker /usr/bin/docker
 COPY --from=builder /root/.docker/cli-plugins/ /usr/local/lib/docker/cli-plugins/
 COPY --from=builder /usr/local/lib/python3.9/site-packages /usr/local/lib/python3.9/site-packages
