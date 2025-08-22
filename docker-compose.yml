@@ -84,6 +84,8 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+#    ports:
+#      - 6379:6379
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 1s
@@ -97,7 +99,7 @@ services:
     image: postgres:17
     restart: unless-stopped
     ports:
-      - "${TAILSCALE_IP}:5432:5432"
+      - "${TAILSCALE_IP}:5432:5432" # Bind to Tailscale IP if set, otherwise all interfaces
     environment:
       - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_USER=${POSTGRES_USER}
@@ -105,6 +107,7 @@ services:
       - PGDATA=${PGDATA}
       - POSTGRES_HOST_AUTH_METHOD=scram-sha-256
       - POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256 --auth-local=scram-sha-256
+#      - POSTGRES_HOST=0.0.0.0 # Listen on all interfaces inside container
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -193,6 +196,7 @@ services:
     networks:
       - n8n-network
     environment:
+      # These are defaults from monitor.Dockerfile, can be overridden here if needed
       - REDIS_HOST=${REDIS_HOST}
       - REDIS_PORT=${REDIS_PORT}
       - QUEUE_NAME_PREFIX=${QUEUE_NAME_PREFIX}
@@ -214,27 +218,29 @@ services:
     environment:
       - REDIS_HOST=${REDIS_HOST}
       - REDIS_PORT=${REDIS_PORT}
+      # - REDIS_PASSWORD=your_redis_password # Add if you set one for Redis
       - QUEUE_NAME_PREFIX=${QUEUE_NAME_PREFIX}
       - QUEUE_NAME=${QUEUE_NAME}
-      - N8N_WORKER_SERVICE_NAME=${N8N_WORKER_SERVICE_NAME}
-      - COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME}
-      - COMPOSE_FILE_PATH=/app/docker-compose.yml
+      - N8N_WORKER_SERVICE_NAME=${N8N_WORKER_SERVICE_NAME} # Service name in this docker-compose file
+      - COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME} # Crucial: Should match your project name
+      - COMPOSE_FILE_PATH=/app/docker-compose.yml # Path to compose file in mounted project
       - MIN_REPLICAS=${MIN_REPLICAS}
-      - MAX_REPLICAS=${MAX_REPLICAS}
-      - SCALE_UP_QUEUE_THRESHOLD=${SCALE_UP_QUEUE_THRESHOLD}
-      - SCALE_DOWN_QUEUE_THRESHOLD=${SCALE_DOWN_QUEUE_THRESHOLD}
-      - POLLING_INTERVAL_SECONDS=${POLLING_INTERVAL_SECONDS}
-      - COOLDOWN_PERIOD_SECONDS=${COOLDOWN_PERIOD_SECONDS}
+      - MAX_REPLICAS=${MAX_REPLICAS} # Adjust as needed
+      - SCALE_UP_QUEUE_THRESHOLD=${SCALE_UP_QUEUE_THRESHOLD} # Scale up if queue length > 5
+      - SCALE_DOWN_QUEUE_THRESHOLD=${SCALE_DOWN_QUEUE_THRESHOLD} # Scale down if queue length < 2
+      - POLLING_INTERVAL_SECONDS=${POLLING_INTERVAL_SECONDS} # Check every 30 seconds
+      - COOLDOWN_PERIOD_SECONDS=${COOLDOWN_PERIOD_SECONDS} # Wait 3 minutes after a scaling action
       - NODE_FUNCTION_ALLOW_EXTERNAL=ajv,ajv-formats,puppeteer
       - PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
       - N8N_QUEUE_BULL_GRACEFULSHUTDOWNTIMEOUT=${N8N_QUEUE_BULL_GRACEFULSHUTDOWNTIMEOUT}
       - N8N_GRACEFUL_SHUTDOWN_TIMEOUT=${N8N_GRACEFUL_SHUTDOWN_TIMEOUT}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./.env:/app/.env
     depends_on:
       redis:
         condition: service_healthy
-      n8n-worker:
-        condition: service_started
+      n8n-worker: # Ensure worker service is defined, though it might start with 0 replicas if autoscaled from 0
+        condition: service_started # or service_healthy if you have a healthcheck that passes with 0 initial replicas
     networks:
       - n8n-network
