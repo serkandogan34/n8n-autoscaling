@@ -1,7 +1,7 @@
 # Use an official Python runtime as a parent image
 FROM python:3.9-slim as builder
 
-# Install system dependencies, Docker CLI, and Docker Compose v2
+# Install system dependencies, Docker CLI, and Docker Compose v2 in a single layer
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     curl \
