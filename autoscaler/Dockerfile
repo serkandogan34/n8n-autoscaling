@@ -1,42 +1,38 @@
-# Use an official Python runtime as a parent image
-FROM python:3.9-slim as builder
+# ---- builder ----
+FROM python:3.9-slim AS builder
 
-# Install system dependencies, Docker CLI, and Docker Compose v2 in a single layer
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    curl \
-    jq \
-    docker.io \
-    && \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl jq docker.io && \
     mkdir -p ~/.docker/cli-plugins/ && \
-    curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 -o ~/.docker/cli-plugins/docker-compose && \
+    curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 \
+      -o ~/.docker/cli-plugins/docker-compose && \
     chmod +x ~/.docker/cli-plugins/docker-compose && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Set the working directory in the container
 WORKDIR /app
-
-# Copy requirements first to leverage Docker cache
 COPY autoscaler/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Final stage
+# ---- final ----
 FROM python:3.9-slim
 WORKDIR /app
 
-# Copy from builder
-COPY --from=builder /usr/bin/docker /usr/bin/docker
-COPY --from=builder /root/.docker/cli-plugins/ /usr/local/lib/docker/cli-plugins/
+# Final stage'de docker-cli ve compose plugin’i kur
+RUN apt-get update && apt-get install -y --no-install-recommends docker.io curl && \
+    mkdir -p /usr/local/lib/docker/cli-plugins && \
+    curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 \
+      -o /usr/local/lib/docker/cli-plugins/docker-compose && \
+    chmod +x /usr/local/lib/docker/cli-plugins/docker-compose && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Python bağımlılıklarını builder'dan al
 COPY --from=builder /usr/local/lib/python3.9/site-packages /usr/local/lib/python3.9/site-packages
 
-# Ensure docker compose plugin is in PATH
-ENV PATH="/usr/local/lib/docker/cli-plugins:${PATH}"
-
-# Copy application files
+# Uygulama dosyaları
 COPY autoscaler/autoscaler.py .
 COPY docker-compose.yml .
-COPY Dockerfile .
+# (Dockerfile’ı kopyalamanız şart değil; istiyorsanız bırakın, zararı yok.)
 
-# Specify the command to run on container start
+ENV PATH="/usr/local/lib/docker/cli-plugins:${PATH}"
+
 CMD ["python", "-u", "autoscaler.py"]
